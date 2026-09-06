@@ -1,0 +1,10 @@
+node_modules/
+.next/
+test-results/
+playwright-report/
+tally/
+diag/
+versions/
+*.off
+*.bak
+*.alt
