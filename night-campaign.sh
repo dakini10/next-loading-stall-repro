@@ -18,6 +18,15 @@ for v in 16.2.6 16.3.4 16.4.0-canary.19; do
   [ -d "versions/$v" ] || { echo "FATAL: versions/$v missing -- run ./setup-versions.sh"; exit 2; }
 done
 
+# 🔴 The knobs MUST be exported here, not left to run-interleaved.sh.
+# On 2026-09-07 they were not, so calibration measured the DEFAULT app shape
+# (30 rows, 120ms) -- the naive shape that provably does not reproduce -- while
+# the campaign measured the real one (200 rows, 200ms). Calibration then
+# correctly reported "does not reproduce", about the wrong application, and
+# refused to run the campaign. The guard fired for a reason that was not the
+# one it was built to detect.
+export ITEM_COUNT="${ITEM_COUNT:-200}" BLURB_REPEAT="${BLURB_REPEAT:-6}" PAGE_DELAY_MS="${PAGE_DELAY_MS:-200}"
+
 CAL_BATCH="${CAL_BATCH:-24}"
 echo; echo "--- calibration on 16.2.6 (batch=$CAL_BATCH) ---"
 BEST=""
@@ -40,6 +49,14 @@ if [ -z "$BEST" ]; then
   exit 3
 fi
 echo "chosen synthetic load: $BEST"
+# The calibration and the campaign must have measured the same application.
+# If they ever diverge again, say so loudly rather than trusting the verdict.
+CAL_SHAPE=$(sed -n 's/.*page_delay_ms=\([0-9]*\).*/\1/p' "versions/16.2.6/tally/cal-$BEST.summary" | head -1)
+if [ "$CAL_SHAPE" != "$PAGE_DELAY_MS" ]; then
+  echo "!! calibration measured page_delay_ms=$CAL_SHAPE but the campaign will use $PAGE_DELAY_MS."
+  echo "!! Those are different applications; the calibration verdict does not transfer. Aborting."
+  exit 3
+fi
 
 ROUNDS="${ROUNDS:-6}"; BATCH="${BATCH:-24}"
 echo; echo "--- interleaved campaign: rounds=$ROUNDS batch=$BATCH load=$BEST ---"

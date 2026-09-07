@@ -47,26 +47,38 @@ the action's POST returned 200. Two things can produce that, and they are counte
 0, the update simply landed after the window on an overloaded machine). Only lost-wakeup
 counts.
 
-Establishing that it still happens on 16.3.4:
+All three versions measured in the same rounds, under the same synthetic load, each run
+asserting which Next version answered it (`ROUNDS=20 BATCH=24`, load 2):
 
-| next | lost-wakeup / runs |
-|---|---|
-| 16.2.6 | 5 / 72, 16 / 72 (see note) |
-| **16.3.4** | **2 / 192** |
-| 16.4.0-canary.19 | 0 / 141 |
-| 16.2.6, `loading.jsx` deleted | 1 / 132 |
+| next | lost-wakeup / runs | rate |
+|---|---|---|
+| **16.2.6** | **220 / 480** | **45.8%** |
+| 16.3.4 | 0 / 480 | 0% |
+| 16.4.0-canary.19 | 0 / 480 | 0% |
+| 16.2.6, `loading.jsx` deleted | 1 / 132 | 0.8% |
 
-Note: the rate moves a lot with machine load — the same 16.2.6 build measured 22% starting
-from a 1-minute load average of ~31 and 7% starting from ~13. Batches taken hours apart are
-therefore not comparable to each other, so the numbers above establish *that* 16.3.4 still
-reproduces, not by how much the rate differs between versions. A version comparison needs
-all versions measured in the same round under the same load: `run-interleaved.sh` does that,
-and `night-campaign.sh` calibrates the load on 16.2.6 first and refuses to run the campaign
-if the known-bad version does not reproduce (a quiet machine reads 0 everywhere, which looks
-exactly like "fixed").
+🔴 **This reproduces on 16.2.6. It does not demonstrate the bug on 16.3.4.** Earlier batches
+here reported `2 / 192` on 16.3.4; that figure was wrong twice over — the denominator was
+under-reported (336 runs existed, not 192), and both events came from the one batch that did
+not assert its served version. Across everything ever run on 16.3.4: 2 / 816. The interleaved
+campaign above, under conditions where the control fires *harder* (45.8% vs the ~22% seen
+earlier), produced nothing in 480 runs.
 
-[#95391](https://github.com/vercel/next.js/pull/95391) (in 16.3.0) clearly helped, but
-16.3.4 still reproduces.
+`loading.js` makes it far more likely but is **not required** — removing it left 1 / 132 with
+the same signature, which is worth knowing because related reports describe it as necessary.
+
+Two things that make these numbers trustworthy, both added after they caught a real error:
+
+- Every run asks the server which version answered (`/api/version`) and fails on a mismatch.
+  With Playwright's `reuseExistingServer` on, a killed server outlived the port check on a
+  loaded machine and a whole batch got measured against the previous version under the new label.
+- `night-campaign.sh` calibrates on the known-bad version first and refuses to run the campaign
+  if it does not reproduce — and now also checks that the calibration and the campaign measured
+  the *same application*. They once did not (30 rows/120ms vs 200 rows/200ms), so calibration
+  correctly reported "does not reproduce" about a different app and blocked a valid run.
+
+The rate moves a lot with machine load — the same 16.2.6 build measured 45.8%, 22% and 7% in
+different sessions — so only compare versions measured in the same round.
 
 ## Running it
 
